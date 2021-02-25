@@ -1,0 +1,14 @@
+This is an implementation of an elevator system. 
+To start the system, do 
+    `python3 elevator.py`
+to issue requests to the system (act as the client), do
+    `echo "<request_floor>,<direction("up"/"down")>,<target_floor>" > /tmp/elevator_request_queue`
+for example, if you want to go from 3rd flor to 5th floor, you would type
+    `echo "3,up,5" > /tmp/elevator_request_queue`
+
+The system checks requests in /tmp/elevator_request_queue periodically.
+Configure system wait time, number of elevators, number of floors in elevator.py by chaning the constant values
+
+The system prioritizes elevators that can pick up requests along the way, and then the idle elevators.
+If no elevator is idle, and no elevator can pick up the request along the way, then the request is 
+marked as unhandled, and will be handled everytime the elevators change their state
