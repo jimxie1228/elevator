@@ -7,6 +7,12 @@ REQUEST_PIPE = "/tmp/elevator_request_queue"
 WAIT_TIME = 5
 # Message format is [floor, "up"/"down"]
 
+# debug variable
+total_rounds = 0
+
+total_num_rounds_to_pick_up_request = 0
+total_picked_up_requests = 0
+
 class Direction(Enum):
     Up = 1
     Down = 2
@@ -18,6 +24,9 @@ class Request:
         self.direction = _direction
         self.target = _target
 
+        # debug variable
+        self.request_issued_time_in_round = total_rounds
+
 class Elevator:
     # default constructor
     def __init__(self):
@@ -26,6 +35,10 @@ class Elevator:
         self.target = None
     
     def handle(self, request: Request):
+        # debug variables
+        global total_picked_up_requests
+        global total_num_rounds_to_pick_up_request
+
         if self.direction == Direction.Idle:
             # we need to know whether we are:
             #   1. going to get a request cuz we are idle 
@@ -45,6 +58,11 @@ class Elevator:
         elif self.direction == Direction.Up:
             if (self.target < request.target):
                 self.target = request.target
+
+        # calculate number of rounds this request spend waiting
+        if(self.floor == request.floor):
+            total_picked_up_requests += 1
+            total_num_rounds_to_pick_up_request += (total_rounds - request.request_issued_time_in_round)
 
     def move_once(self):
         if(self.direction == Direction.Up):
@@ -110,6 +128,8 @@ def parse_request(message: str):
     return Request(int(floor), direction, int(target))
     
 def main():
+    global total_rounds
+
     elevator_list = []
     floor_request_map = {}
     
@@ -128,6 +148,8 @@ def main():
 
     with os.fdopen(pipe_fd) as pipe:
         while True:
+            total_rounds += 1
+            # Every elevator try to pick up a request along the way
             for elevator in elevator_list:
                 cur_floor = elevator.floor
                 if(elevator.direction == Direction.Idle):
@@ -149,16 +171,20 @@ def main():
                         elevator.handle(floor_request_map[cur_floor][Direction.Down][0])
                         floor_request_map[cur_floor][Direction.Down] = None
 
+            # Go through all the unhandled requests, handle them if there is an idle elevator
             for i in range(MAX_FLOOR):
                 if (floor_request_map[i][Direction.Up] and 
                    not floor_request_map[i][Direction.Up][1]):
-                   handle_request(floor_request_map[i][Direction.Up][0])
+                   handle_request(floor_request_map[i][Direction.Up][0],
+                                    elevator_list,
+                                    floor_request_map)
                 if (floor_request_map[i][Direction.Down] and 
                    not floor_request_map[i][Direction.Down][1]):
                    handle_request(floor_request_map[i][Direction.Down][0],
                                     elevator_list,
                                     floor_request_map)
             
+            # listen for a new request
             message = pipe.read()
             if message:
                 print("Received: '%s'" % message)
@@ -166,12 +192,19 @@ def main():
                 request = parse_request(message)
                 handle_request(request, elevator_list, floor_request_map)
 
+            # every elevator move once
             for elevator in elevator_list:
                 elevator.move_once()
 
             print("Elevator states:")
             for i, elevator in enumerate(elevator_list):
                 print("Elevator " + str(i) + " is on floor " + str(elevator.floor))
+            
+            print("System staticstics:")
+            if total_picked_up_requests > 0:
+                print(f"Average request waiting time in rounds: {total_num_rounds_to_pick_up_request / total_picked_up_requests}")
+            else:
+                print(f"Average request waiting time in rounds: 0")
             
             time.sleep(WAIT_TIME)
         
